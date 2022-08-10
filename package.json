@@ -25,7 +25,6 @@
     "morgan": "^1.10.0",
     "redis": "^4.2.0",
     "util": "^0.12.4",
-    "utils": "^0.3.1",
     "web-service-utils": "github:GuilhermeRoque/web-service-utils"
   },
   "devDependencies": {

@@ -3,12 +3,13 @@ const express = require('express');
 const app = express();
 var logger = require('morgan');
 const {redisClient} = require("./redisClient");
-const { UnauthorizedError } = require('web-service-utils/serviceErrors');
+const { UnauthorizedError, ServiceError } = require('web-service-utils/serviceErrors');
 const util = require('util')
-const jwt = require('jsonwebtoken')
+const jwt = require('jsonwebtoken');
+const { getToken } = require('web-service-utils/controller');
+const { HttpStatusCodes } = require('web-service-utils/enums');
 app.use(logger('dev'));
 const verifyAsync = util.promisify(jwt.verify)
-
 
 // async function removeAccessToken(accessToken){
 //     if(accessToken){
@@ -73,11 +74,9 @@ async function verify(accessToken){
 
 const verifyAccessToken = (async (req, res, next) => {
     try {
-        const accessToken = _getToken(req)
+        const accessToken = getToken(req)
         const userToken = await verify(accessToken)
-        console.log("userToken", userToken)
-        req.user = userToken.user
-        req.accessToken = userToken.accessToken
+        req.headers.user = JSON.stringify(userToken.user)
         next()                
     } catch (error) {
         next(error)
@@ -88,7 +87,26 @@ app.put("/users*", verifyAccessToken)
 app.delete("/users*", verifyAccessToken)
 app.get("/users*", verifyAccessToken)
 app.use('/users', createProxyMiddleware({target: process.env.IDENTITY_SERVICE}))
+app.use('/auth', createProxyMiddleware({target: process.env.IDENTITY_SERVICE}))
 
+
+
+app.use(async (error, req, res, next) =>{
+    console.log("Handling error...")
+    console.log(error)
+    if (error instanceof ServiceError){
+        res.status(error.httpStatusCode).send({
+            message: error.message, 
+            value: error.value
+        })    
+    }else{
+        const message = 'Unexpected error'
+        console.log(message)
+        res.status(HttpStatusCodes.INTERNAL_SERVER).send({
+            message: message, 
+        })    
+    }
+})
 // app.use('/auth', createProxyMiddleware({target: URL}))
 
 // function onProxyRes(proxyRes, req, res) {
