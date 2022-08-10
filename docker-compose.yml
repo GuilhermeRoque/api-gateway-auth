@@ -1,0 +1,23 @@
+version: '3'
+services:
+  app:
+    build:
+      dockerfile: test.dockerfile
+      context: .
+    image: guilhermeroque/api-gateway-auth
+    environment:
+      - IDENTITY_SERVICE=http://localhost:5000
+      - ACCESS_TOKEN_SECRET=45d239dd6d20d8e4c5919079a40e5ea6cf8d9ab0
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./src:/root/src
+    ports:
+      - 8000:3000
+    depends_on:
+      - redis
+
+  redis: 
+    image: redis:7.0.4
+    ports:
+      - "8379:6379"
+
