@@ -10,6 +10,7 @@ const { getToken } = require('web-service-utils/controller');
 const { HttpStatusCodes } = require('web-service-utils/enums');
 app.use(logger('dev'));
 const verifyAsync = util.promisify(jwt.verify)
+const router = express.Router();
 
 // async function removeAccessToken(accessToken){
 //     if(accessToken){
@@ -48,11 +49,23 @@ const verifyAsync = util.promisify(jwt.verify)
 // }
 
 
+// logout: (async (req, res, next) => {
+//     const cookies = req.cookies;
+//     const refreshToken = cookies?.jwt;
+//     const accessToken = get_to(req)
+//     try {
+//         await authService.signout(accessToken, refreshToken)
+//         res.sendStatus(HttpStatusCodes.OK)
+//     } catch (error) {
+//        next(error) 
+//     }
+// })
+
 
 
 // check if token is in deny list -> check if token is valid -> check if user is in deny list
 async function verify(accessToken){
-    // console.log("VERIFYING TOKEN: ", accessToken)
+    console.log("VERIFYING TOKEN: ", accessToken)
     if (!accessToken) throw new UnauthorizedError("Access token missing")
     const isInDenyListJWT = await redisClient.isInDenyListJWT(accessToken)
     if (isInDenyListJWT) throw new UnauthorizedError("Access token is in deny list", {accessToken: accessToken})
@@ -83,14 +96,53 @@ const verifyAccessToken = (async (req, res, next) => {
     }
 })
 
-app.put("/users*", verifyAccessToken)
-app.delete("/users*", verifyAccessToken)
-app.get("/users*", verifyAccessToken)
-app.use('/users', createProxyMiddleware({target: process.env.IDENTITY_SERVICE}))
-app.use('/auth', createProxyMiddleware({target: process.env.IDENTITY_SERVICE}))
+// if we are in handling CORS allow it for CLIENT_ENTRYPOINT_URL
+router.use(async (req, res, next) => {
+    if(req.method === 'OPTIONS'){
+        res.header("Access-Control-Allow-Origin", process.env.CLIENT_ENTRYPOINT_URL);
+        res.header("Access-Control-Allow-Headers", "authorization, content-type");
+        res.header("Access-Control-Expose-Headers", "authorization, content-type");
+        res.header("Access-Control-Allow-Methods", "*");
+        res.header("Access-Control-Allow-Credentials", "true")
+        res.sendStatus(HttpStatusCodes.OK);    
+    }else{
+        next()
+    }
+});
+
+// check access token if method !== POST (POST WILL CREATE THE USER)
+router.use("/users", async (req, res, next) => {    
+    console.log("HEREEE")
+    if (req.method !== "POST") await verifyAccessToken(req, res, next)
+    next()
+})
+
+// check access token for organizations CRUD
+router.use('/organizations', verifyAccessToken)
 
 
+router.use("/auth/logout", async (req, res, next) => {    
+    res.sendStatus(HttpStatusCodes.OK)
+})
+router.use('/auth/refresh', verifyAccessToken)
 
+  
+const pathRewrite = function (path, req) { return path.replace('/api', '') }
+// proxy users & auth & organizations to IDENTITY_SERVICE
+router.use(['/users', '/auth', '/organizations'], createProxyMiddleware({
+    target: process.env.IDENTITY_SERVICE, 
+    pathRewrite:pathRewrite,
+    // onProxyRes:onProxyRes
+}), async (req, res, next) =>{})
+
+router.use(async (req, res, next) => {res.sendStatus(404)})
+
+app.use('/api', router)
+
+// PROXY FRONT END SERVER AND SET FRONT END TO REQUEST TO API_GATEWAY TO AVOID CORS
+app.get('/*',createProxyMiddleware({target: process.env.FRONT_END}))
+
+// HANDLE ERRORS
 app.use(async (error, req, res, next) =>{
     console.log("Handling error...")
     console.log(error)
@@ -107,14 +159,9 @@ app.use(async (error, req, res, next) =>{
         })    
     }
 })
-// app.use('/auth', createProxyMiddleware({target: URL}))
-
-// function onProxyRes(proxyRes, req, res) {
-//     console.log("proxyRes", proxyRes)
-//     console.log('\n\ndeny jwt\n\n')
-// }
-// app.use("/organizations/:id/members", createProxyMiddleware({target: URL, changeOrigin:true, onProxyRes:onProxyRes}))
 
 redisClient.connect()
     .then(app.listen(3000, () => {console.log('API Gateway running!')}))
     .catch("Couldn't start API-Gateway")
+
+
