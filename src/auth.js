@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { UnauthorizedError, ForbiddenError } = require('web-service-utils/serviceErrors');
 const verifyAsync = util.promisify(jwt.verify)
 const {redisClient} = require("./redisClient");
+const { HttpStatusCodes } = require('web-service-utils/enums');
 
 class MemberError extends ForbiddenError{
     constructor(user){
@@ -97,7 +98,7 @@ const verifyAccessToken = (async (req, res, next) => {
 const logout = (async (req, res, next) => {
     const cookies = req.cookies;
     const refreshToken = cookies?.jwt;
-    const accessToken = get_to(req)
+    const accessToken = getToken(req)
     try {
         await signout(accessToken, refreshToken)
         res.sendStatus(HttpStatusCodes.OK)
@@ -108,7 +109,6 @@ const logout = (async (req, res, next) => {
 
 const refresh = (async (req, res, next) => {
     const cookies = req.cookies;
-    console.log("COOOKIES", cookies)
     const refreshToken = cookies?.jwt;
     try {
         if (!refreshToken) throw new UnauthorizedError("Refresh token missing") 

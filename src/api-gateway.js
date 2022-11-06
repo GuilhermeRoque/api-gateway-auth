@@ -1,8 +1,9 @@
 const express = require('express');
 const { createProxyMiddleware, responseInterceptor } = require('http-proxy-middleware');
+const { HttpStatusCodes } = require('web-service-utils/enums');
 const router = express.Router();
 const {verifyAccessToken, logout, refresh} = require('./auth')
-
+const axios = require('axios')
 
 // if we are in handling CORS allow it for CLIENT_ENTRYPOINT_URL
 router.use(async (req, res, next) => {
@@ -39,7 +40,27 @@ router.use(["/organizations/:organizationId/applications",
                 pathRewrite:{ '^/api': ''},
                 // pathRewrite:{ '^\/api\/organizations\/[^\/]*': ''} ,
             }),
-            async (req, res, next) =>{} )
+            async (req, res, next) =>{})
+
+router.use("/organizations/:organizationId/device-profiles", async (req, res, next) =>{
+    const orgId = req.params.organizationId
+    const paths = [
+        `${process.env.DEVICE_MGNT}/organizations/${orgId}/applications`,
+        `${process.env.DEVICE_MGNT}/organizations/${orgId}/service-profiles`,
+        `${process.env.DEVICE_MGNT}/organizations/${orgId}/lora-profiles`
+    ]
+    const requests = paths.map((p,i)=>axios.get(p))
+    axios.all(requests).then(axios.spread((...responses) => {
+        res.status(200).send({
+            applications: responses[0].data,
+            serviceProfiles: responses[1].data,
+            loraProfiles: responses[2].data,
+        })
+      })).catch(errors => {
+          res.status(500).send({message: "Error getting device profiles", error: errors})      
+      })
+})
+
 
 // proxy users & auth & organizations to IDENTITY_SERVICE
 router.use(['/users', '/auth', '/organizations'], 
