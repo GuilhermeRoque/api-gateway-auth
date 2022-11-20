@@ -4,6 +4,9 @@ const { HttpStatusCodes } = require('web-service-utils/enums');
 const router = express.Router();
 const {verifyAccessToken, logout, refresh} = require('./auth')
 const axios = require('axios')
+const crypto = require("crypto")
+
+
 
 // if we are in handling CORS allow it for CLIENT_ENTRYPOINT_URL
 router.use(async (req, res, next) => {
@@ -28,7 +31,6 @@ router.use("/users", async (req, res, next) => {
 // check access token for organizations CRUD
 router.use('/organizations', verifyAccessToken)
 
-
 router.use("/auth/logout", logout)
 router.use('/auth/refresh', refresh)  
 
@@ -42,7 +44,7 @@ router.use(["/organizations/:organizationId/applications",
             }),
             async (req, res, next) =>{})
 
-router.use("/organizations/:organizationId/device-profiles", async (req, res, next) =>{
+router.get("/organizations/:organizationId/device-profiles", async (req, res, next) =>{
     const orgId = req.params.organizationId
     const paths = [
         `${process.env.DEVICE_MGNT}/organizations/${orgId}/applications`,
@@ -62,6 +64,116 @@ router.use("/organizations/:organizationId/device-profiles", async (req, res, ne
 })
 
 
+router.post('/organizations', express.json(), async (req, res, next) => {
+    const config = {
+        headers: {
+            "Authorization": `Bearer ${process.env.INFLUX_TOKEN}`
+        }
+    }
+    try {
+        const respInlfluxOrg = await axios.post(`${process.env.INFLUX_URL}/api/v2/orgs`, req.body, config)
+        const orgID = respInlfluxOrg.data.id
+        const bucket = "Sensor Data"
+        const respInfluxOrgBucket = await axios.post(`${process.env.INFLUX_URL}/api/v2/buckets`, {
+            description: "LoRaWAN A.P sensor data bucket",
+            name: bucket,
+            orgID: orgID,
+            retentionRules: [{
+                everySeconds: 0,
+                type: "expire"
+            }]
+        }, config)
+        const bucketID = respInfluxOrgBucket.data.id
+        const respUser = await axios.post(`${process.env.INFLUX_URL}/api/v2/users`, {
+            name: req.body.name,
+            status: "active"
+        }, config)
+        const userID = respUser.data.id
+
+        const influxResources = [
+            "authorizations",
+            "buckets",
+            "dashboards",
+            "orgs",
+            "tasks",
+            "telegrafs",
+            "users",
+            "variables",
+            "secrets",
+            "labels",
+            "views",
+            "documents",
+            "notificationRules",
+            "notificationEndpoints",
+            "checks",
+            "dbrp",
+            "annotations",
+            "sources",
+            "scrapers",
+            "notebooks",
+            "remotes",
+            "replications",
+        ]
+        const permissions = ['read', 'write']
+        
+        const reqPermissions = []
+        for(const resource of influxResources){
+            for(const permission of permissions){
+                reqPermissions.push(
+                    {
+                        action: permission,
+                        resource: {
+                            orgID: orgID,
+                            type: resource,
+                        }
+                    }
+                )    
+            }
+        }
+
+        
+        const resResources = await axios.post(
+            `${process.env.INFLUX_URL}/api/v2/authorizations`,
+            {
+                description: `Full permission org ${orgID} user ${userID}`,
+                orgID: orgID,
+                userID: userID,
+                permissions: reqPermissions,
+                status: "active"
+            },
+            config
+        )
+
+        const password = crypto.randomBytes(20).toString('hex')
+
+        const respUserPassword = await axios.post(`${process.env.INFLUX_URL}/api/v2/users/${userID}/password`, {
+            password: password
+        }, config)
+
+
+        const respUserOwner = await axios.post(`${process.env.INFLUX_URL}/api/v2/orgs/${orgID}/owners`, {
+            id: userID
+        }, config)
+
+
+        req.body.timeSeriesDB = {
+            orgId: respInlfluxOrg.data.id,
+            bucketId: respInfluxOrgBucket.data.id,
+            token: resResources.data.token,
+            username: respUser.data.name,
+            password: password
+        }
+        const respIdentity = await axios.post(`${process.env.IDENTITY_SERVICE}/organizations`, req.body, {headers: {user: req.headers.user}})
+        res.status(201).send(respIdentity.data)
+
+    } catch (error) {
+        console.log(error)
+        res.status(500).send(error)
+    }
+
+})
+
+
 // proxy users & auth & organizations to IDENTITY_SERVICE
 router.use(['/users', '/auth', '/organizations'], 
     createProxyMiddleware({
@@ -69,8 +181,6 @@ router.use(['/users', '/auth', '/organizations'],
         pathRewrite:{ '^/api': ''},
         // onProxyRes:onProxyRes
 }), async (req, res, next) =>{})
-
-
 
 
 router.use(async (req, res, next) => {res.sendStatus(404)})

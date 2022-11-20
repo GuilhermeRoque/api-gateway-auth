@@ -64,7 +64,6 @@ async function signout(accessToken, refreshToken){
 
 // check if token is in deny list -> check if token is valid -> check if user is in deny list
 async function verify(accessToken){
-    console.log("VERIFYING TOKEN: ", accessToken)
     if (!accessToken) throw new UnauthorizedError("Access token missing")
     const isInDenyListJWT = await redisClient.isInDenyListJWT(accessToken)
     if (isInDenyListJWT) throw new UnauthorizedError("Access token is in deny list", {accessToken: accessToken})

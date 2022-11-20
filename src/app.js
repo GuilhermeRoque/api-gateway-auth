@@ -9,7 +9,6 @@ const cookieParser = require('cookie-parser');
 
 app.use(logger('dev'));
 app.use(cookieParser())
-
 app.use('/api', api_gateway)
 
 // PROXY FRONT END SERVER AND SET FRONT END TO REQUEST TO API_GATEWAY TO AVOID CORS
