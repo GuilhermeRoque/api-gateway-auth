@@ -156,14 +156,19 @@ router.post('/organizations', express.json(), async (req, res, next) => {
         }, config)
 
 
-        req.body.timeSeriesDB = {
-            orgId: respInlfluxOrg.data.id,
-            bucketId: respInfluxOrgBucket.data.id,
+        const respIdentity = await axios.post(`${process.env.IDENTITY_SERVICE}/organizations`, req.body, {headers: {user: req.headers.user}})
+        timeSeriesData = {
+            organizationId: respIdentity.data.organization._id,
+            organizationDataId: respInlfluxOrg.data.id,
+            bucket: respInfluxOrgBucket.data.id,
             token: resResources.data.token,
             username: respUser.data.name,
             password: password
         }
-        const respIdentity = await axios.post(`${process.env.IDENTITY_SERVICE}/organizations`, req.body, {headers: {user: req.headers.user}})
+        console.log("data", timeSeriesData)
+        console.log("data", respIdentity.data)
+        const respDeviceMgnt = await axios.post(`${process.env.DEVICE_MGNT}/organizations`, timeSeriesData, {headers: {user: req.headers.user}})
+
         res.status(201).send(respIdentity.data)
 
     } catch (error) {
