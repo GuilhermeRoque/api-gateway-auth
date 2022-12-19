@@ -34,6 +34,13 @@ router.use('/organizations', verifyAccessToken)
 router.use("/auth/logout", logout)
 router.use('/auth/refresh', refresh)  
 
+router.use("/organizations/:organizationId/export-sensor-data/devices/:deviceId",
+createProxyMiddleware({
+    target:process.env.DATA_ANALYTICS,
+    pathRewrite:{ '^/api': ''},
+})
+)
+
 router.use(["/organizations/:organizationId/applications",
             "/organizations/:organizationId/service-profiles",
             "/organizations/:organizationId/lora-profiles"], 
