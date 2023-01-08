@@ -4,7 +4,8 @@ const { HttpStatusCodes } = require('web-service-utils/enums');
 const router = express.Router();
 const {verifyAccessToken, logout, refresh} = require('./auth')
 const axios = require('axios')
-const crypto = require("crypto")
+const crypto = require("crypto");
+const redisClient = require('./redisClient').redisClient;
 
 
 
@@ -36,40 +37,33 @@ router.use('/auth/refresh', refresh)
 
 router.use("/organizations/:organizationId/export-sensor-data/devices/:deviceId",
 createProxyMiddleware({
-    target:process.env.DATA_ANALYTICS,
-    pathRewrite:{ '^/api': ''},
-})
-)
+    target:process.env.DATA_ANALYSER,
+    pathRewrite: (async (path, req)=>{
+        let newPath = path.replace(/^\/api/, '')
+        let orgKey = req.params.organizationId
+        let orgInflux = await redisClient.getOrgInflux(orgKey)
+        newPath = newPath.replace(/(?<=organizations\/)(.*?)(?=\/)/, orgInflux)
+        return newPath
+    }
+)}))
 
 router.use(["/organizations/:organizationId/applications",
             "/organizations/:organizationId/service-profiles",
-            "/organizations/:organizationId/lora-profiles"], 
+            "/organizations/:organizationId/lora-profiles",
+            "/organizations/:organizationId/device-profiles"], 
             createProxyMiddleware({
                 target:process.env.DEVICE_MGNT,
-                pathRewrite:{ '^/api': ''},
-                // pathRewrite:{ '^\/api\/organizations\/[^\/]*': ''} ,
-            }),
+                pathRewrite: (async (path, req)=>{
+                    let newPath = path.replace(/^\/api/, '')
+                    let orgKey = req.params.organizationId
+                    let orgInflux = await redisClient.getOrgAppMgnt(orgKey)
+                    newPath = newPath.replace(/(?<=organizations\/)(.*?)(?=\/)/, orgInflux)
+                    newPath = newPath.replace(/\/device-profiles/,'')
+                    return newPath
+                }
+            )}),
+
             async (req, res, next) =>{})
-
-router.get("/organizations/:organizationId/device-profiles", async (req, res, next) =>{
-    const orgId = req.params.organizationId
-    const paths = [
-        `${process.env.DEVICE_MGNT}/organizations/${orgId}/applications`,
-        `${process.env.DEVICE_MGNT}/organizations/${orgId}/service-profiles`,
-        `${process.env.DEVICE_MGNT}/organizations/${orgId}/lora-profiles`
-    ]
-    const requests = paths.map((p,i)=>axios.get(p))
-    axios.all(requests).then(axios.spread((...responses) => {
-        res.status(200).send({
-            applications: responses[0].data,
-            serviceProfiles: responses[1].data,
-            loraProfiles: responses[2].data,
-        })
-      })).catch(errors => {
-          res.status(500).send({message: "Error getting device profiles", error: errors})      
-      })
-})
-
 
 router.post('/organizations', express.json(), async (req, res, next) => {
     const config = {
@@ -78,9 +72,10 @@ router.post('/organizations', express.json(), async (req, res, next) => {
         }
     }
     try {
+        console.log("POST TO",`${process.env.INFLUX_URL}/api/v2/orgs`)
         const respInlfluxOrg = await axios.post(`${process.env.INFLUX_URL}/api/v2/orgs`, req.body, config)
         const orgID = respInlfluxOrg.data.id
-        const bucket = "Sensor Data"
+        const bucket = process.env.INFLUX_BUCKET
         const respInfluxOrgBucket = await axios.post(`${process.env.INFLUX_URL}/api/v2/buckets`, {
             description: "LoRaWAN A.P sensor data bucket",
             name: bucket,
@@ -164,17 +159,23 @@ router.post('/organizations', express.json(), async (req, res, next) => {
 
 
         const respIdentity = await axios.post(`${process.env.IDENTITY_SERVICE}/organizations`, req.body, {headers: {user: req.headers.user}})
+        const orgIdentity = respIdentity.data.organization._id
         timeSeriesData = {
-            organizationId: respIdentity.data.organization._id,
+            organizationId: orgIdentity,
             organizationDataId: respInlfluxOrg.data.id,
             bucket: respInfluxOrgBucket.data.id,
             token: resResources.data.token,
             username: respUser.data.name,
             password: password
         }
-        console.log("data", timeSeriesData)
-        console.log("data", respIdentity.data)
+        console.log("datatimeSeriesData", timeSeriesData)
+        console.log("datarespIdentity", respIdentity.data)
         const respDeviceMgnt = await axios.post(`${process.env.DEVICE_MGNT}/organizations`, timeSeriesData, {headers: {user: req.headers.user}})
+        console.log("respDeviceMgnt", respDeviceMgnt.data)
+        const orgAppMgnt = respDeviceMgnt.data._id
+        
+        await redisClient.setOrgAppMgnt(orgIdentity, orgAppMgnt)
+        await redisClient.setOrgInflux(orgIdentity, orgID)
 
         res.status(201).send(respIdentity.data)
 

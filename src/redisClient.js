@@ -7,6 +7,8 @@ class RedisClient{
     HASH_FORMAT = 'hex'
     DENY_LIST_JWT_PREFIX = 'denyJWT'
     DENY_LIST_USER_ID_PREFIX = 'denyUserID'
+    ORG_INFLUX_PREFIX = 'orgInflux'
+    ORG_APP_MGNT_PREFIX = 'orgAppMgnt'
     DO_HASH_TOKEN = true
     DO_HASH_USER_ID = false
     URL = process.env.REDIS_URL
@@ -35,6 +37,26 @@ class RedisClient{
 
     async isInDenyListUserId(userId){
         return await this._checkExists(userId, this.DENY_LIST_USER_ID_PREFIX, this.DO_HASH_USER_ID)
+    }
+
+    async getOrgAppMgnt(orgId){
+        const keyInflux = this._adaptKey(orgId, this.ORG_APP_MGNT_PREFIX, false)
+        return await this.client.get(keyInflux)
+    }
+
+    async getOrgInflux(orgId){
+        const keyInflux = this._adaptKey(orgId, this.ORG_INFLUX_PREFIX, false)
+        return await this.client.get(keyInflux)
+    }
+
+    async setOrgAppMgnt(orgId, orgAppMgnt){
+        const keyInflux = this._adaptKey(orgId, this.ORG_APP_MGNT_PREFIX, false)
+        return await this.client.set(keyInflux, orgAppMgnt)
+    }
+
+    async setOrgInflux(orgId, orgInflux){
+        const keyInflux = this._adaptKey(orgId, this.ORG_INFLUX_PREFIX, false)
+        return await this.client.set(keyInflux, orgInflux)
     }
 
     async _push(key, prefix, doHash, expireAt){
