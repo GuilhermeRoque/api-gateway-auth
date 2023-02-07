@@ -42,7 +42,7 @@ const findMemberIndex = (organization, userId) => {
 async function removeAccessToken(accessToken){
     if(accessToken){
         try {
-            await verifyAsync(accessToken, process.env.ACCESS_TOKEN_SECRET)        
+            await verifyAsync(accessToken, process.env.ACCESS_TOKEN_SECRET, {algorithm: ["RS256"]})        
             await redisClient.pushDenyListJWT(accessToken)
         } catch (error) {console.log("Error! accessToken will not be added to deny list", accessToken)}
     }
@@ -51,7 +51,7 @@ async function removeAccessToken(accessToken){
 async function removeRefreshToken(refreshToken){
     if(refreshToken){
         try {
-            await verifyAsync(refreshToken, process.env.REFRESH_TOKEN_SECRET,)        
+            await verifyAsync(refreshToken, process.env.REFRESH_TOKEN_SECRET, {algorithm: ["RS256"]})        
             await redisClient.pushDenyListJWT(refreshToken)
         } catch (error) {console.log("Error! refreshToken will not be added to deny list", refreshToken)}
     }
@@ -70,8 +70,7 @@ async function verify(accessToken){
 
     let user = undefined
     try {
-        const payload = await verifyAsync(accessToken, process.env.ACCESS_TOKEN_SECRET)
-        // console.log("PAYLOAD: ", payload)
+        const payload = await verifyAsync(accessToken, process.env.ACCESS_TOKEN_SECRET,  {algorithm: ["RS256"]})
         user = payload.user
     } catch (error) {
         throw new UnauthorizedError("Access token is invalid", {accessToken: accessToken})        
@@ -115,7 +114,7 @@ const refresh = (async (req, res, next) => {
         if (denyToken) throw new UnauthorizedError("Token is in deny list", {token: refreshToken})    
         let userId = undefined
         try {
-            const payload = await verifyAsync(refreshToken, process.env.REFRESH_TOKEN_SECRET)            
+            const payload = await verifyAsync(refreshToken, process.env.REFRESH_TOKEN_SECRET, {algorithm: ["RS256"]})            
             userId = payload.userId
             req.headers.user_refresh = userId    
             next()            

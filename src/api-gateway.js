@@ -52,7 +52,7 @@ router.use(["/organizations/:organizationId/applications",
             "/organizations/:organizationId/lora-profiles",
             "/organizations/:organizationId/device-profiles"], 
             createProxyMiddleware({
-                target:process.env.DEVICE_MGNT,
+                target:process.env.APP_MGR,
                 pathRewrite: (async (path, req)=>{
                     let newPath = path.replace(/^\/api/, '')
                     let orgKey = req.params.organizationId
@@ -170,7 +170,7 @@ router.post('/organizations', express.json(), async (req, res, next) => {
         }
         console.log("datatimeSeriesData", timeSeriesData)
         console.log("datarespIdentity", respIdentity.data)
-        const respDeviceMgnt = await axios.post(`${process.env.DEVICE_MGNT}/organizations`, timeSeriesData, {headers: {user: req.headers.user}})
+        const respDeviceMgnt = await axios.post(`${process.env.APP_MGR}/organizations`, timeSeriesData, {headers: {user: req.headers.user}})
         console.log("respDeviceMgnt", respDeviceMgnt.data)
         const orgAppMgnt = respDeviceMgnt.data._id
         
